@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>示例插件设置</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        font-family:
+          system-ui,
+          -apple-system,
+          "Segoe UI",
+          sans-serif;
+      }
+      body {
+        margin: 0;
+        padding: 24px;
+        background: Canvas;
+        color: CanvasText;
+      }
+      main {
+        max-width: 640px;
+        padding: 24px;
+        border: 1px solid color-mix(in srgb, CanvasText 18%, transparent);
+        border-radius: 12px;
+      }
+      h1 {
+        margin-top: 0;
+        font-size: 1.25rem;
+      }
+      p {
+        line-height: 1.7;
+      }
+      code {
+        padding: 0.1em 0.35em;
+        border-radius: 4px;
+        background: color-mix(in srgb, CanvasText 8%, transparent);
+      }
+      .muted {
+        opacity: 0.7;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>示例插件设置</h1>
+      <p>这是 <code>example.hello</code> 的静态设置页，用于验证插件仓库的安装和页面加载流程。</p>
+      <p class="muted">插件没有可配置项。真实插件可以在这里放置表单，并通过插件自己的 admin 接口读写设置。</p>
+    </main>
+  </body>
+</html>

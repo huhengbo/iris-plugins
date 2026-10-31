@@ -1,0 +1,127 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Publish immutable plugin releases and Pages index
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.13.6"
+          enable-cache: true
+      - name: Check plugins
+        run: bash scripts/check.sh
+      - name: Build packages
+        run: uv run scripts/build_packages.py --out dist
+      - name: Create or verify one release per plugin version
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          zips=(dist/*.zip)
+          if [ "${#zips[@]}" -eq 0 ]; then
+            echo "错误：没有构建出 zip" >&2
+            exit 1
+          fi
+          rm -rf published
+          mkdir -p published
+          work="$(mktemp -d)"
+          trap 'rm -rf "$work"' EXIT
+
+          for zip in "${zips[@]}"; do
+            asset="$(basename "$zip")"
+            stem="${asset%.zip}"
+            plugin_id="${stem%-*}"
+            version="${stem##*-}"
+            tag="${plugin_id}-v${version}"
+
+            if gh release view "$tag" >/dev/null 2>&1; then
+              echo "==> $tag 已存在，检查 $asset 的内容是否仍与源码一致"
+              if ! gh release download "$tag" --pattern "$asset" --dir published; then
+                echo "错误：Release $tag 缺少资产 $asset" >&2
+                exit 1
+              fi
+              rm -rf "$work/local" "$work/published"
+              unzip -q "$zip" -d "$work/local"
+              unzip -q "published/$asset" -d "$work/published"
+              if ! diff -r "$work/local" "$work/published"; then
+                echo "错误：$tag 的已发布内容与当前源码构建结果不同。" >&2
+                echo "版本号不可变：请修改 plugin.json 和 pyproject.toml 的版本后重新提交。" >&2
+                exit 1
+              fi
+              echo "内容一致：$tag"
+            elif git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
+              echo "错误：tag $tag 已存在，但没有对应的 GitHub Release；请人工处理。" >&2
+              exit 1
+            else
+              echo "==> 创建 $tag"
+              gh release create "$tag" "$zip" \
+                --title "$tag" \
+                --notes "Iris 插件 ${plugin_id} ${version}" \
+                --latest=false
+              if ! gh release download "$tag" --pattern "$asset" --dir published; then
+                echo "错误：Release $tag 创建后无法下载资产 $asset" >&2
+                exit 1
+              fi
+            fi
+          done
+
+          echo "==> 已发布资产"
+          ls -l published
+      - name: Build index from published assets
+        run: |
+          set -euo pipefail
+          uv run scripts/build_index.py \
+            --dist published \
+            --release-repo "$GITHUB_REPOSITORY" \
+            --out site/index.json
+          uv run --with jsonschema python scripts/validate_index.py site/index.json
+      - name: Add Pages landing page
+        run: |
+          set -euo pipefail
+          cat > site/index.html <<'HTML'
+          <!doctype html>
+          <html lang="zh-CN">
+            <head>
+              <meta charset="utf-8" />
+              <meta name="viewport" content="width=device-width, initial-scale=1" />
+              <title>Iris 官方插件仓库</title>
+            </head>
+            <body>
+              <main>
+                <h1>Iris 官方插件仓库</h1>
+                <p>宿主使用的索引：<a href="index.json">index.json</a></p>
+              </main>
+            </body>
+          </html>
+          HTML
+          touch site/.nojekyll
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - id: deployment
+        uses: actions/deploy-pages@v4

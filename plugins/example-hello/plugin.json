@@ -1,0 +1,12 @@
+{
+  "id": "example.hello",
+  "name": "示例插件",
+  "version": "1.0.0",
+  "description": "仅用于验证插件仓库端到端流程的示例插件。",
+  "sdk": ">=1.0,<2.0",
+  "entry": "iris_plugin_example_hello",
+  "provides": ["admin.ui"],
+  "capabilities": ["logger"],
+  "ui": "ui",
+  "pages": [{"id": "settings", "title": "设置"}]
+}

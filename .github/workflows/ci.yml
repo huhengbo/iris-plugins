@@ -1,0 +1,51 @@
+name: CI
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Check plugins
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.13.6"
+          enable-cache: true
+      - name: Run uv sync, ruff and pytest
+        run: bash scripts/check.sh
+
+  build:
+    name: Build packages and validate index
+    needs: check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.13.6"
+          enable-cache: true
+      - name: Build deterministic packages
+        run: uv run scripts/build_packages.py --out dist
+      - name: Verify the archives are reproducible
+        run: |
+          set -euo pipefail
+          sha256sum dist/*.zip | sort > /tmp/first.sha256
+          uv run scripts/build_packages.py --out dist
+          sha256sum dist/*.zip | sort > /tmp/second.sha256
+          diff -u /tmp/first.sha256 /tmp/second.sha256
+      - name: Build index with relative URLs
+        run: uv run scripts/build_index.py --dist dist --base-url "" --out dist/index.json
+      - name: Validate index against JSON Schema
+        run: uv run --with jsonschema python scripts/validate_index.py dist/index.json
+      - name: Upload dist
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+          if-no-files-found: error
