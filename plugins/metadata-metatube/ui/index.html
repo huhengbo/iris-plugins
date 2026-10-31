@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>MetaTube 设置</title>
+    <link rel="stylesheet" href="/plugins/_sdk/iris-plugin.css" />
+    <link rel="stylesheet" href="style.css" />
+    <script src="/plugins/_sdk/iris-plugin.js"></script>
+    <script src="app.js" defer></script>
+  </head>
+  <body>
+    <section class="iris-card mt-card">
+      <h2>MetaTube</h2>
+      <p class="iris-muted">
+        通过 MetaTube 服务器刮削番号类影片的资料、演员头像和图片。设置项与 Jellyfin/Emby 的
+        MetaTube 插件一致。
+      </p>
+      <p id="status-line" class="iris-muted" role="status" aria-live="polite">正在读取…</p>
+    </section>
+    <form id="settings" class="iris-card mt-card" novalidate></form>
+  </body>
+</html>

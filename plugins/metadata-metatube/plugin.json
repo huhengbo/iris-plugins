@@ -1,0 +1,18 @@
+{
+  "id": "metatube",
+  "name": "MetaTube",
+  "version": "1.0.0",
+  "description": "通过 MetaTube 服务器刮削番号类影片的资料、演员头像和图片。",
+  "sdk": ">=1.0,<2.0",
+  "entry": "iris_plugin_metatube",
+  "provides": [
+    "metadata.search",
+    "metadata.details",
+    "metadata.images",
+    "metadata.people",
+    "admin.ui"
+  ],
+  "capabilities": ["logger"],
+  "ui": "ui",
+  "pages": [{"id": "settings", "title": "设置"}]
+}

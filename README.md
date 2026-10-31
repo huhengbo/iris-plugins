@@ -2,7 +2,7 @@
 
 Iris 官方插件仓库的脚手架。宿主按 ADR 0029（`iris` 仓库的 `docs/adr/0029-plugin-repositories.md`）从本仓库的 `index.json` 浏览、安装和升级插件；插件包放在 GitHub Release，索引部署到 GitHub Pages。
 
-当前仓库只有一个仅用于端到端验证的示例插件 `example.hello`，**尚未正式发布**。系统插件（`builtin.*`）仍随 Iris 镜像发布，不在本仓库中。
+当前仓库有两个插件：仅用于端到端验证的示例插件 `example.hello`，和参照 Jellyfin/Emby 版实现的元数据插件 `metatube`（见 `plugins/metadata-metatube`）。**尚未正式发布**。系统插件（`builtin.*`）仍随 Iris 镜像发布，不在本仓库中。
 
 ## 目录结构
 
@@ -18,6 +18,7 @@ Iris 官方插件仓库的脚手架。宿主按 ADR 0029（`iris` 仓库的 `doc
 │   ├── validate_index.py           用 JSON Schema 校验 index.json
 │   └── check.sh                    每个插件：uv sync --frozen + ruff + pytest
 ├── plugins/
+│   ├── metadata-metatube/          MetaTube 元数据插件（目录结构同下）
 │   └── example-hello/
 │       ├── plugin.json
 │       ├── pyproject.toml

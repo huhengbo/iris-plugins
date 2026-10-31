@@ -1,0 +1,32 @@
+.mt-card {
+  max-width: 720px;
+  margin-bottom: 16px;
+}
+.mt-section {
+  margin: 24px 0 12px;
+  padding-top: 16px;
+  border-top: 1px solid var(--iris-border);
+  font-size: 15px;
+}
+.mt-section:first-child {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
+}
+.mt-hidden {
+  display: none;
+}
+textarea {
+  resize: vertical;
+  min-height: 96px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 13px;
+}
+.mt-secret {
+  display: flex;
+  gap: 8px;
+}
+.mt-secret input {
+  flex: 1;
+  min-width: 0;
+}
