@@ -39,6 +39,12 @@ SIMILARITY_THRESHOLD = 0.8
 DIRECTOR_PREFIX = "director:"
 NAME_PREFIX = "name:"
 _PLACEHOLDER = re.compile(r"\{(\w+)\}")
+# 文件名里跟在番号后的标记：字幕（-C）、无码（-U、-UC）、4K、泄漏，以及没去掉的扩展名
+_NUMBER_MARKS = re.compile(
+    r"(?:(?<=\d)[-_. ]+(?:uc|cu|u|c|4k|leak|uncensored)|[. ]+(?:mp4|mkv|avi|wmv|ts|iso))$",
+    re.IGNORECASE,
+)
+_NOT_ALNUM = re.compile(r"[^0-9a-z]+")
 
 
 class MetaTubeProvider:
@@ -67,14 +73,22 @@ class MetaTubeProvider:
         if request.kind != "movie":
             return []
         cfg = self._config()
-        results = self._client.search_movies(cfg, request.title)
+        query = _strip_number_marks(request.title)
+        results = self._client.search_movies(cfg, query)
         results = _apply_provider_filter(results, cfg.provider_filter)
+        # 同一个番号会从多个来源各返回一条。宿主要求能确定唯一的一个才自动匹配，所以番号
+        # 完全一致的结果只留排在最前面的来源，并用查询串作原名，让宿主按「原名与文件名一致」认出它
+        key = _number_key(query)
+        exact = [r for r in results if key and _number_key(_str(r, "number")) == key]
+        if exact:
+            results = exact[:1]
         candidates = []
         for item in results:
             provider, movie_id = _str(item, "provider"), _str(item, "id")
             if not provider or not movie_id:
                 continue
-            parts = (f"[{provider}]", _str(item, "number"), _str(item, "title"))
+            number = _str(item, "number")
+            parts = (f"[{provider}]", number, _str(item, "title"))
             title = " ".join(part for part in parts if part)
             release = _valid_date(_str(item, "release_date"))
             candidates.append(
@@ -82,6 +96,8 @@ class MetaTubeProvider:
                     provider_id=self.id,
                     remote_id=make_remote_id(provider, movie_id),
                     title=title,
+                    # 没有精确命中时用番号作原名，宿主才能拿它和文件名比相似度
+                    original_title=request.title if exact else number or None,
                     year=int(release[:4]) if release else None,
                     kind="movie",
                 )
@@ -305,6 +321,18 @@ def _actor_image(client: MetaTubeClient, cfg: Config, result: dict[str, Any]) ->
         position=0.5,
         auto=True,
     )
+
+
+def _strip_number_marks(text: str) -> str:
+    text = text.strip()
+    while (stripped := _NUMBER_MARKS.sub("", text)) != text:
+        text = stripped
+    return text
+
+
+def _number_key(text: str) -> str:
+    """比较番号用：忽略大小写、连字符和空格。"""
+    return _NOT_ALNUM.sub("", text.lower())
 
 
 def _apply_provider_filter(

@@ -104,7 +104,11 @@ class MetaTubeClient:
     # ---- 内部 ----
 
     def _list(self, cfg: Config, path: str, params: dict[str, str]) -> list[dict[str, Any]]:
-        data = self._get(cfg, path, {**params, "fallback": "true"})
+        try:
+            data = self._get(cfg, path, {**params, "fallback": "true"})
+        except MetadataNotFound:
+            # 搜不到时服务器回 404（info not found），对搜索来说就是没有结果
+            return []
         if data is None:
             return []
         if not isinstance(data, list):

@@ -19,16 +19,86 @@ from tests.fake_server import (
 def test_search_formats_candidates_like_jellyfin_plugin() -> None:
     provider, recorder = make_provider(standard_handler)
 
-    candidates = provider.search(MetadataSearchRequest(title="SSIS-001"))
+    candidates = provider.search(MetadataSearchRequest(title="SSIS"))
 
     assert [c.title for c in candidates] == ["[DMM] SSIS-001 B", "[FANZA] SSIS-001 A"]
     assert candidates[1].remote_id == "FANZA:ssis00001"
     assert candidates[1].year == 2021
     assert candidates[0].year is None
+    # 没有精确命中时原名是接口给的番号，宿主拿它和文件名比相似度
+    assert [c.original_title for c in candidates] == ["SSIS-001", "SSIS-001"]
     request = recorder.requests[0]
     assert request.headers["Authorization"] == f"Bearer {TOKEN}"
-    assert request.url.params["q"] == "SSIS-001"
+    assert request.url.params["q"] == "SSIS"
     assert request.url.params["fallback"] == "true"
+
+
+def test_search_exact_number_keeps_first_source_and_names_it_after_the_query() -> None:
+    def handler(request):  # type: ignore[no-untyped-def]
+        return envelope(
+            [
+                {"provider": "FANZA", "id": "a", "number": "ABF-364", "title": "A"},
+                {"provider": "JavBus", "id": "ABF-364", "number": "ABF-364", "title": "A"},
+                {"provider": "DUGA", "id": "d", "number": "ABW-206", "title": "别的"},
+            ]
+        )
+
+    provider, _ = make_provider(handler)
+
+    candidates = provider.search(MetadataSearchRequest(title="abf364"))
+
+    assert [(c.remote_id, c.original_title) for c in candidates] == [("FANZA:a", "abf364")]
+
+
+def test_search_exact_number_follows_provider_filter_order() -> None:
+    def handler(request):  # type: ignore[no-untyped-def]
+        return envelope(
+            [
+                {"provider": "FANZA", "id": "a", "number": "ABF-364", "title": "A"},
+                {"provider": "JavBus", "id": "b", "number": "ABF-364", "title": "A"},
+            ]
+        )
+
+    provider, _ = make_provider(
+        handler, {"enable_provider_filter": True, "provider_filter": "JavBus,FANZA"}
+    )
+
+    candidates = provider.search(MetadataSearchRequest(title="ABF-364"))
+
+    assert [c.remote_id for c in candidates] == ["JavBus:b"]
+
+
+@pytest.mark.parametrize(
+    ("title", "query"),
+    [
+        ("ABF-358-U", "ABF-358"),
+        ("CAWD-045-UC", "CAWD-045"),
+        ("jul-963-C", "jul-963"),
+        ("ABP-408 mp4", "ABP-408"),
+        ("ABF-358-UC.mp4", "ABF-358"),
+        ("SSIS-001", "SSIS-001"),
+        ("FC2-PPV-1234567", "FC2-PPV-1234567"),
+    ],
+)
+def test_search_strips_file_marks_but_keeps_the_original_title_for_matching(
+    title: str, query: str
+) -> None:
+    def handler(request):  # type: ignore[no-untyped-def]
+        assert request.url.params["q"] == query
+        return envelope([{"provider": "FANZA", "id": "a", "number": query, "title": "A"}])
+
+    provider, _ = make_provider(handler)
+
+    (candidate,) = provider.search(MetadataSearchRequest(title=title))
+
+    # 宿主拿文件名里的片名和候选的原名比较，所以原名必须是未去后缀的查询串
+    assert candidate.original_title == title
+
+
+def test_search_not_found_is_an_empty_result() -> None:
+    provider, _ = make_provider(lambda request: error(404, "info not found"))
+
+    assert provider.search(MetadataSearchRequest(title="ZZZ-999")) == []
 
 
 def test_search_filter_keeps_listed_providers_in_filter_order() -> None:

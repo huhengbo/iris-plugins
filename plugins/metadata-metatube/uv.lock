@@ -96,7 +96,7 @@ wheels = [
 
 [[package]]
 name = "iris-plugin-metatube"
-version = "1.0.0"
+version = "1.0.1"
 source = { editable = "." }
 dependencies = [
     { name = "iris-plugin-sdk" },
