@@ -76,6 +76,8 @@ def test_search_exact_number_follows_provider_filter_order() -> None:
         ("jul-963-C", "jul-963"),
         ("ABP-408 mp4", "ABP-408"),
         ("ABF-358-UC.mp4", "ABF-358"),
+        ("ABF-358-LTX", "ABF-358"),
+        ("ABF-358-UC-LTX.mkv", "ABF-358"),
         ("SSIS-001", "SSIS-001"),
         ("FC2-PPV-1234567", "FC2-PPV-1234567"),
     ],
@@ -93,6 +95,28 @@ def test_search_strips_file_marks_but_keeps_the_original_title_for_matching(
 
     # 宿主拿文件名里的片名和候选的原名比较，所以原名必须是未去后缀的查询串
     assert candidate.original_title == title
+
+
+@pytest.mark.parametrize(
+    ("title", "remote_id"),
+    [
+        ("ABF-358-LTX", "FANZA:a:LTX"),
+        ("abf358_ltx.mp4", "FANZA:a:LTX"),
+        ("ABF-358-LTX-C", "FANZA:a:C:LTX"),
+        ("ABF-358-C", "FANZA:a:C"),
+        ("ABF-358-UC.mp4", "FANZA:a:C:U"),
+        ("ABF-358-U-C", "FANZA:a:C:U"),
+        ("ABF-358", "FANZA:a"),
+    ],
+)
+def test_search_marks_ltx_files_in_the_remote_id(title: str, remote_id: str) -> None:
+    provider, _ = make_provider(
+        lambda request: envelope([{"provider": "FANZA", "id": "a", "number": "ABF-358"}])
+    )
+
+    (candidate,) = provider.search(MetadataSearchRequest(title=title))
+
+    assert candidate.remote_id == remote_id
 
 
 def test_search_not_found_is_an_empty_result() -> None:
@@ -154,6 +178,57 @@ def test_details_maps_fields_with_default_templates() -> None:
     assert [d.name for d in record.directors] == ["監督A"]
     assert [c.name for c in record.cast] == ["女優A", "女優B"]
     assert record.external_ids == {"metatube": "FANZA:ssis00001"}
+
+
+def test_details_ltx_mark_adds_genre_and_keeps_the_id() -> None:
+    provider, recorder = make_provider(standard_handler)
+
+    record = provider.details("FANZA:ssis00001:LTX", kind="movie")
+
+    assert recorder.requests[0].url.path == "/v1/movies/FANZA/ssis00001"
+    assert record.remote_id == "FANZA:ssis00001:LTX"
+    assert record.genres == ("単体作品", "巨乳", "LTX 破解")
+    assert record.external_ids == {"metatube": "FANZA:ssis00001"}
+    assert provider.page_url("movie", "FANZA:ssis00001:LTX") == f"{SERVER}?redirect=FANZA:ssis00001"
+
+
+@pytest.mark.parametrize(
+    ("remote_id", "badge"),
+    [
+        ("FANZA:ssis00001", None),
+        ("FANZA:ssis00001:C", "zimu.png"),
+        ("FANZA:ssis00001:U", "u.png"),
+        ("FANZA:ssis00001:LTX", "u.png"),
+        ("FANZA:ssis00001:C:U", "uc.png"),
+        ("FANZA:ssis00001:C:LTX", "uc.png"),
+    ],
+)
+def test_details_badges_only_the_posters(remote_id: str, badge: str | None) -> None:
+    provider, _ = make_provider(standard_handler, {"enable_badges": True})
+
+    record = provider.details(remote_id, kind="movie")
+
+    expected = [badge] if badge else None
+    assert record.poster is not None
+    assert parse_qs(urlsplit(record.poster).query).get("badge") == expected
+    for source in record.artwork["poster"]:
+        assert parse_qs(urlsplit(source).query).get("badge") == expected
+    for source in (record.backdrop, record.thumb, *record.artwork["backdrop"]):
+        assert source is not None and "badge" not in parse_qs(urlsplit(source).query)
+
+
+def test_details_badges_off_by_default_and_customizable() -> None:
+    provider, _ = make_provider(standard_handler)
+    record = provider.details("FANZA:ssis00001:C", kind="movie")
+    assert record.poster is not None and "badge=" not in record.poster
+
+    provider, _ = make_provider(
+        standard_handler,
+        {"enable_badges": True, "uncensored_badge": "https://img.test/ltx.png"},
+    )
+    record = provider.details("FANZA:ssis00001:LTX", kind="movie")
+    assert record.poster is not None
+    assert parse_qs(urlsplit(record.poster).query)["badge"] == ["https://img.test/ltx.png"]
 
 
 def test_details_cast_uses_gfriends_image_and_first_result_identity() -> None:

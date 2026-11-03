@@ -1,8 +1,8 @@
 """设置页字段和运行时配置。
 
 字段与 jellyfin-plugin-metatube 的 PluginConfiguration 一一对应；Iris 的元数据接口没有语言参数，
-所以额外增加了翻译目标语言。徽章、预告片、合集和计划任务依赖 Jellyfin/Emby 的媒体库对象，
-Iris 的插件接口没有对应能力，不提供。
+所以额外增加了翻译目标语言。预告片、合集和计划任务依赖 Jellyfin/Emby 的媒体库对象，
+Iris 的插件接口没有对应能力，不提供。角标按无码、无码字幕再细分了图片。
 """
 
 from __future__ import annotations
@@ -19,6 +19,10 @@ DEFAULT_NAME_TEMPLATE = "{number} {title}"
 DEFAULT_TAGLINE_TEMPLATE = "配信開始日 {date}"
 DEFAULT_IMAGE_QUALITY = 90
 DEFAULT_TRANSLATION_LANGUAGE = "zh-CN"
+# MetaTube 服务器内置的角标图：中文字幕、无码破解、中文无码
+DEFAULT_SUBTITLE_BADGE = "zimu.png"
+DEFAULT_UNCENSORED_BADGE = "u.png"
+DEFAULT_UNCENSORED_SUBTITLE_BADGE = "uc.png"
 
 TRANSLATION_MODES = ("disabled", "title", "summary", "both")
 # 值是 MetaTube 服务器 /v1/translate 的 engine 参数（服务端按名称不区分大小写匹配）
@@ -83,6 +87,37 @@ def metatube_settings(store: SettingsStore) -> SettingsEndpoint:
                 default=DEFAULT_IMAGE_QUALITY,
                 min=0,
                 max=100,
+            ),
+            SettingField(
+                "enable_badges",
+                "启用角标",
+                "bool",
+                help="按文件名标记给封面图左上角加角标：-C 字幕，-U、-LTX 无码，-UC 无码字幕。",
+                default=False,
+            ),
+            SettingField(
+                "subtitle_badge",
+                "字幕角标",
+                "text",
+                help="服务器内置图片名或 PNG 图片地址，默认 zimu.png（中文字幕）。",
+                default=DEFAULT_SUBTITLE_BADGE,
+                max_length=512,
+            ),
+            SettingField(
+                "uncensored_badge",
+                "无码角标",
+                "text",
+                help="默认 u.png（无码破解）。",
+                default=DEFAULT_UNCENSORED_BADGE,
+                max_length=512,
+            ),
+            SettingField(
+                "uncensored_subtitle_badge",
+                "无码字幕角标",
+                "text",
+                help="同时带字幕和无码标记时使用，默认 uc.png（中文无码）。",
+                default=DEFAULT_UNCENSORED_SUBTITLE_BADGE,
+                max_length=512,
             ),
             SettingField(
                 "enable_provider_filter",
@@ -223,6 +258,8 @@ class Config:
     enable_real_actor_names: bool
     primary_image_ratio: float
     image_quality: int
+    # 没有启用角标时为 None；三个值依次是字幕、无码、无码字幕角标
+    badges: tuple[str, str, str] | None
     provider_filter: tuple[str, ...] | None
     name_template: str
     tagline_template: str
@@ -248,6 +285,15 @@ class Config:
             enable_real_actor_names=_flag(values, "enable_real_actor_names"),
             primary_image_ratio=float(_number(values, "primary_image_ratio", -1)),
             image_quality=int(_number(values, "image_quality", DEFAULT_IMAGE_QUALITY)),
+            badges=(
+                (
+                    _text(values, "subtitle_badge") or DEFAULT_SUBTITLE_BADGE,
+                    _text(values, "uncensored_badge") or DEFAULT_UNCENSORED_BADGE,
+                    _text(values, "uncensored_subtitle_badge") or DEFAULT_UNCENSORED_SUBTITLE_BADGE,
+                )
+                if _flag(values, "enable_badges")
+                else None
+            ),
             provider_filter=provider_filter,
             name_template=(
                 _text(values, "name_template", DEFAULT_NAME_TEMPLATE)

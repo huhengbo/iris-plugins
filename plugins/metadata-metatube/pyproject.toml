@@ -1,6 +1,6 @@
 [project]
 name = "iris-plugin-metatube"
-version = "1.0.1"
+version = "1.1.0"
 description = "Iris 的 MetaTube 元数据插件"
 readme = "README.md"
 requires-python = ">=3.13"

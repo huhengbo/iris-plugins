@@ -77,6 +77,7 @@ class MetaTubeClient:
         position: float = -1,
         auto: bool = False,
         ratio: float | None = None,
+        badge: str = "",
     ) -> str:
         """图片来源：相对服务器根的路径和查询，下载时再拼上当前配置的服务器地址。"""
         params = {
@@ -87,6 +88,8 @@ class MetaTubeClient:
         }
         if url:
             params["url"] = url
+        if badge:
+            params["badge"] = badge
         path = f"{IMAGE_PREFIX}{kind}/{_segment(provider)}/{_segment(remote_id)}"
         return f"{path}?{urlencode(params)}"
 

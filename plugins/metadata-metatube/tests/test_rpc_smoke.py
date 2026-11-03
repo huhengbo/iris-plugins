@@ -23,7 +23,7 @@ def test_manifest_declares_metatube_contract() -> None:
     manifest = load_manifest(PLUGIN_ROOT)
 
     assert manifest.id == "metatube"
-    assert manifest.version == "1.0.1"
+    assert manifest.version == "1.1.0"
     assert manifest.sdk == ">=1.0,<2.0"
     assert set(manifest.provides) == {
         "metadata.search",

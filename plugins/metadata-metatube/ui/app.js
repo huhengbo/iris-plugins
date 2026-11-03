@@ -13,7 +13,17 @@
         "enable_real_actor_names",
       ],
     },
-    { title: "图片", fields: ["primary_image_ratio", "image_quality"] },
+    {
+      title: "图片",
+      fields: [
+        "primary_image_ratio",
+        "image_quality",
+        "enable_badges",
+        "subtitle_badge",
+        "uncensored_badge",
+        "uncensored_subtitle_badge",
+      ],
+    },
     { title: "来源", fields: ["enable_provider_filter", "provider_filter"] },
     { title: "模板", fields: ["enable_template", "name_template", "tagline_template"] },
     {

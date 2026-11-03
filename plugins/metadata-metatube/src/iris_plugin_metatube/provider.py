@@ -39,11 +39,23 @@ SIMILARITY_THRESHOLD = 0.8
 DIRECTOR_PREFIX = "director:"
 NAME_PREFIX = "name:"
 _PLACEHOLDER = re.compile(r"\{(\w+)\}")
-# 文件名里跟在番号后的标记：字幕（-C）、无码（-U、-UC）、4K、泄漏，以及没去掉的扩展名
+# 文件名里跟在番号后的标记：字幕（-C）、无码（-U、-UC）、LTX 破解、4K、泄漏，以及没去掉的扩展名
 _NUMBER_MARKS = re.compile(
-    r"(?:(?<=\d)[-_. ]+(?:uc|cu|u|c|4k|leak|uncensored)|[. ]+(?:mp4|mkv|avi|wmv|ts|iso))$",
+    r"(?:(?<=\d)(?:[-_. ]+(?:uc|cu|u|c|ltx|4k|leak|uncensored))+|[. ]+(?:mp4|mkv|avi|wmv|ts|iso))$",
     re.IGNORECASE,
 )
+_MARK_WORDS = re.compile(r"[0-9a-z]+", re.IGNORECASE)
+# details 只拿得到条目 ID，所以文件名标记跟在 ID 后面（provider:id:C:U），详情据此加类别和角标
+SUBTITLE_FLAG, UNCENSORED_FLAG, LTX_FLAG = "C", "U", "LTX"
+_FLAG_ORDER = (SUBTITLE_FLAG, UNCENSORED_FLAG, LTX_FLAG)
+_MARK_FLAGS = {
+    "c": (SUBTITLE_FLAG,),
+    "u": (UNCENSORED_FLAG,),
+    "uc": (UNCENSORED_FLAG, SUBTITLE_FLAG),
+    "cu": (UNCENSORED_FLAG, SUBTITLE_FLAG),
+    "ltx": (LTX_FLAG,),
+}
+LTX_GENRE = "LTX 破解"
 _NOT_ALNUM = re.compile(r"[^0-9a-z]+")
 
 
@@ -82,6 +94,8 @@ class MetaTubeProvider:
         exact = [r for r in results if key and _number_key(_str(r, "number")) == key]
         if exact:
             results = exact[:1]
+        # 去掉的那段就是文件名标记
+        flags = _mark_flags(request.title.strip()[len(query) :])
         candidates = []
         for item in results:
             provider, movie_id = _str(item, "provider"), _str(item, "id")
@@ -94,7 +108,7 @@ class MetaTubeProvider:
             candidates.append(
                 MetadataCandidate(
                     provider_id=self.id,
-                    remote_id=make_remote_id(provider, movie_id),
+                    remote_id=make_remote_id(provider, movie_id, flags),
                     title=title,
                     # 没有精确命中时用番号作原名，宿主才能拿它和文件名比相似度
                     original_title=request.title if exact else number or None,
@@ -112,7 +126,7 @@ class MetaTubeProvider:
         if kind != "movie":
             raise MetadataNotFound("MetaTube 只提供影片资料")
         cfg = self._config()
-        provider, movie_id = parse_remote_id(remote_id)
+        provider, movie_id, flags = parse_remote_id(remote_id)
         info = self._client.movie(cfg, provider, movie_id)
         number, original_title = _str(info, "number"), _str(info, "title")
         title, summary = original_title, _str(info, "summary")
@@ -129,6 +143,8 @@ class MetaTubeProvider:
             genres = cfg.genre_table.substitute_items(genres)
         title, summary = self._translator.translate_movie(cfg, title, summary)
         actors = _distinct(actors)
+        if LTX_FLAG in flags:
+            genres.append(LTX_GENRE)
         genres = _distinct(genres)
         previews = _distinct(_strings(info, "preview_images"))
 
@@ -163,9 +179,11 @@ class MetaTubeProvider:
             else ()
         )
         image = self._client.image_source
+        # 和 Jellyfin 插件一样只给封面图加角标
+        badge = _badge(cfg, flags)
         return MetadataRecord(
             provider_id=self.id,
-            remote_id=make_remote_id(provider, movie_id),
+            remote_id=make_remote_id(provider, movie_id, flags),
             title=name,
             kind="movie",
             original_title=original_title or None,
@@ -177,13 +195,16 @@ class MetaTubeProvider:
             genres=tuple(genres),
             studios=(maker,) if maker else (),
             content_rating=CONTENT_RATING,
-            poster=image("primary", provider, movie_id, cfg),
+            poster=image("primary", provider, movie_id, cfg, badge=badge),
             backdrop=image("backdrop", provider, movie_id, cfg, ratio=-1),
             thumb=image("thumb", provider, movie_id, cfg, ratio=-1),
             artwork={
                 "poster": (
-                    image("primary", provider, movie_id, cfg),
-                    *(image("primary", provider, movie_id, cfg, url=url) for url in previews),
+                    image("primary", provider, movie_id, cfg, badge=badge),
+                    *(
+                        image("primary", provider, movie_id, cfg, url=url, badge=badge)
+                        for url in previews
+                    ),
                 ),
                 "backdrop": (
                     image("backdrop", provider, movie_id, cfg, ratio=-1),
@@ -212,7 +233,9 @@ class MetaTubeProvider:
         server = self._config().server
         if kind != "movie" or not server:
             return None
-        return f"{server}?redirect={quote(remote_id, safe=':%')}"
+        provider, movie_id, _ = parse_remote_id(remote_id)
+        redirect = quote(make_remote_id(provider, movie_id), safe=":%")
+        return f"{server}?redirect={redirect}"
 
     def image(self, source: str, width: int) -> bytes:
         return self._client.image(self._config(), source)
@@ -230,7 +253,7 @@ class MetaTubeProvider:
             if not provider or not actor_id:
                 raise MetadataNotFound("MetaTube 上没有这位演员")
         else:
-            provider, actor_id = parse_remote_id(remote_id)
+            provider, actor_id, _ = parse_remote_id(remote_id)
         info = self._client.actor(cfg, provider, actor_id)
         return MetadataPerson(
             remote_id=remote_id,
@@ -297,15 +320,17 @@ class MetaTubeProvider:
         )
 
 
-def make_remote_id(provider: str, remote_id: str) -> str:
-    return f"{provider}:{quote(remote_id, safe='')}"
+def make_remote_id(provider: str, remote_id: str, flags: tuple[str, ...] = ()) -> str:
+    """形如 provider:id，文件名标记跟在后面（provider:id:LTX）；id 里的冒号已转义。"""
+    return ":".join((provider, quote(remote_id, safe=""), *flags))
 
 
-def parse_remote_id(value: str) -> tuple[str, str]:
+def parse_remote_id(value: str) -> tuple[str, str, tuple[str, ...]]:
     provider, separator, rest = value.partition(":")
-    if not separator or not provider or not rest:
+    remote_id, *flags = rest.split(":")
+    if not separator or not provider or not remote_id:
         raise MetadataNotFound("MetaTube 条目 ID 不正确")
-    return provider, unquote(rest)
+    return provider, unquote(remote_id), tuple(flags)
 
 
 def _actor_image(client: MetaTubeClient, cfg: Config, result: dict[str, Any]) -> str | None:
@@ -321,6 +346,27 @@ def _actor_image(client: MetaTubeClient, cfg: Config, result: dict[str, Any]) ->
         position=0.5,
         auto=True,
     )
+
+
+def _mark_flags(marks: str) -> tuple[str, ...]:
+    found = {
+        flag for word in _MARK_WORDS.findall(marks) for flag in _MARK_FLAGS.get(word.lower(), ())
+    }
+    return tuple(flag for flag in _FLAG_ORDER if flag in found)
+
+
+def _badge(cfg: Config, flags: tuple[str, ...]) -> str:
+    if cfg.badges is None:
+        return ""
+    subtitle_badge, uncensored_badge, uncensored_subtitle_badge = cfg.badges
+    subtitle = SUBTITLE_FLAG in flags
+    # LTX 是破解版，按无码处理
+    uncensored = UNCENSORED_FLAG in flags or LTX_FLAG in flags
+    if subtitle and uncensored:
+        return uncensored_subtitle_badge
+    if uncensored:
+        return uncensored_badge
+    return subtitle_badge if subtitle else ""
 
 
 def _strip_number_marks(text: str) -> str:
